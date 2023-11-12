@@ -4,8 +4,8 @@
 #include "formula.h"
 
 #include <functional>
-#include <unordered_set>
 #include <optional>
+#include <unordered_set>
 
 class Sheet;
 
@@ -14,24 +14,53 @@ public:
     Cell(Sheet& sheet);
     ~Cell();
 
-    void Set(std::string text);
+    template <typename VerifyFormula>
+    void Set(std::string text, VerifyFormula verify_formula);
+    void Set(std::string text) {
+        return Set(text, [](const FormulaInterface&) {});
+    }
     void Clear();
+    // true если значение вычислено или не требует других значений.
+    bool HasValue() const;
+    // true если кеш был очищен.
+    bool ClearCache() const;
 
     Value GetValue() const override;
     std::string GetText() const override;
-    std::vector<Position> GetReferencedCells() const override;
+    const std::vector<Position>& GetReferencedCells() const override;
+
+    bool IsReferenced() const;
 
 private:
-    class Impl;
-    class EmptyImpl;
-    class TextImpl;
-    class FormulaImpl;
-    bool WouldIntroduceCircularDependency(const Impl& impl) const;
-    void InvalidateCacheRecursive(bool force = false);
-
-private:
-    std::unique_ptr<Impl> impl_;
+    struct EmptyCell {
+    };
+    struct TextCell {
+        std::string text;
+        std::string value;
+    };
+    struct FormulaCell {
+        std::unique_ptr<FormulaInterface> formula;
+        mutable std::optional<Cell::Value> value;
+    };
     Sheet& sheet_;
-    std::unordered_set<Cell*> l_nodes_;
-    std::unordered_set<Cell*> r_nodes_;
+    // Используем sheet для вычисления формулы в момент создания ячейки.
+    std::variant<EmptyCell, TextCell, FormulaCell> thіs = EmptyCell{};
 };
+
+template <typename VerifyFormula>
+void Cell::Set(std::string text, VerifyFormula verify_formula) {
+    if (text.empty()) {
+        thіs = EmptyCell{};
+    } else if (text[0] == '\'') {
+        std::string value = text.substr(1);
+        thіs = TextCell{std::move(text), std::move(value)};
+    } else if (text == "=") {
+        thіs = TextCell{"=", "="};
+    } else if (text[0] == '=') {
+        std::unique_ptr<FormulaInterface> formula = ParseFormula(text.substr(1));
+        verify_formula(*formula);
+        thіs = FormulaCell{std::move(formula), {}};
+    } else {
+        thіs = TextCell{text, std::move(text)};
+    }
+}

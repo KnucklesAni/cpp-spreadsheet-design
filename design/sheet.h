@@ -4,28 +4,10 @@
 #include "common.h"
 
 #include <functional>
-#include <unordered_map>
-
-//CellHasher уже есть, поэтому назвал CHasher
-class CHasher {
-public:
-    size_t operator()(const Position p) const {
-        return std::hash<std::string>()(p.ToString());
-    }
-};
-
-//CellComparator уже есть, поэтому назвал CComparator
-class CComparator {
-public:
-    bool operator()(const Position& lhs, const Position& rhs) const {
-        return lhs == rhs;
-    }
-};
+#include <set>
 
 class Sheet : public SheetInterface {
 public:
-    using Table = std::unordered_map<Position, std::unique_ptr<Cell>, CHasher, CComparator>;
-
     ~Sheet();
 
     void SetCell(Position pos, std::string text) override;
@@ -40,9 +22,19 @@ public:
     void PrintValues(std::ostream& output) const override;
     void PrintTexts(std::ostream& output) const override;
 
-    const Cell* GetCellPtr(Position pos) const;
-    Cell* GetCellPtr(Position pos);
+    // Р’РѕР·РІСЂР°С‰Р°РµС‚ РЅРѕРІРѕРµ Р·РЅР°С‡РµРЅРёРµ, РѕР±РЅРѕРІР»СЏРµС‚ Р·РЅР°С‡РµРЅРёСЏ С„РѕСЂРјСѓР» РїСЂРё РЅРµРѕР±С…РѕРґРёРјРѕСЃС‚Рё.
+    FormulaInterface::Value GetNewValue(
+        Position pos,
+        const FormulaInterface& formula,
+        std::vector<std::vector<int>>& ref_count);
+    const std::set<Position>& GetBackReferences(Position pos) const;
 
 private:
-    Table cells_;
+    struct CellInfo {
+        std::unique_ptr<Cell> cell;
+        std::unique_ptr<std::set<Position>> referenced_by;
+    };
+    std::vector<std::vector<CellInfo>> values_;
+    size_t width_ = 0;
+    size_t max_width_rows_ = 0;
 };
